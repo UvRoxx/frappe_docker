@@ -4,7 +4,18 @@ LABEL author=frappé
 
 ARG GIT_REPO=https://github.com/frappe/bench.git
 ARG GIT_BRANCH=v5.x
-
+# Install YARN
+RUN . ${NVM_DIR}/nvm.sh \
+    && nvm use v${NODE_VERSION} \
+    && npm install -g yarn \
+    && nvm alias default v${NODE_VERSION} \
+    && rm -rf ${NVM_DIR}/.cache
+# Ensure yarn is in PATH
+ENV PATH ${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/:${PATH}
+# Test for yarn
+RUN yarn --version
+# If test fails, echo error and exit
+RUN if [ $? -ne 0 ]; then echo "Yarn installation failed"; exit 1; fi
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
     # For frappe framework

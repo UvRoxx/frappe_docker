@@ -41,7 +41,10 @@ RUN useradd -ms /bin/bash frappe \
     && nvm install ${NODE_VERSION} \
     && nvm use v${NODE_VERSION} \
     && npm install -g yarn \
+    && npm install -g yarn \
+    && npm install -g yarn \
     && nvm alias default v${NODE_VERSION} \
+    && npm install -g yarn \
     && rm -rf ${NVM_DIR}/.cache \
     && echo 'export NVM_DIR="/home/frappe/.nvm"' >>/home/frappe/.bashrc \
     && echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm' >>/home/frappe/.bashrc \
@@ -68,8 +71,35 @@ RUN useradd -ms /bin/bash frappe \
     && chown -R frappe:frappe /run/nginx.pid \
     && chmod 755 /usr/local/bin/nginx-entrypoint.sh \
     && chmod 644 /templates/nginx/frappe.conf.template
+# Install gnupg required for adding the Yarn repository key
+RUN apt-get update \
+    && apt-get install -y gnupg
+
+# Now add Yarn's repository and install Yarn
+RUN curl -sL https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - \
+    && echo "deb https://dl.yarnpkg.com/debian/ stable main" > /etc/apt/sources.list.d/yarn.list \
+    && apt-get update && apt-get install -y yarn
+
+# Install Supervisor
+RUN apt-get update \
+    && apt-get install -y supervisor \
+    && mkdir -p /var/log/supervisor \
+    && chown -R frappe:frappe /var/log/supervisor \
+    && chown -R frappe:frappe /etc/supervisor
+
+RUN apt-get install -y supervisor \
+  && mkdir -p /var/log/supervisor \
+  && chown -R frappe:frappe /var/log/supervisor \
+  && chown -R frappe:frappe /etc/supervisor
+
+CMD ["/usr/bin/supervisord"]
+
 
 FROM base AS builder
+
+
+# Yarn = Npm so we need to set the alias so yarn works as npm
+RUN echo 'alias yarn="npm"' >>/home/frappe/.bashrc
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
@@ -94,6 +124,18 @@ RUN apt-get update \
     build-essential \
     libbz2-dev \
     && rm -rf /var/lib/apt/lists/*
+# Install YARN
+RUN . ${NVM_DIR}/nvm.sh \
+    && nvm use v${NODE_VERSION} \
+    && npm install -g yarn \
+    && nvm alias default v${NODE_VERSION} \
+    && rm -rf ${NVM_DIR}/.cache
+# Set alias yarn for yarnpkg to avoid conflict with yarn package
+RUN echo 'alias yarn="yarnpkg"' >>/home/frappe/.bashrc
+# test yarn installation
+ENV PATH ${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/:${PATH}
+
+
 
 # apps.json includes
 ARG APPS_JSON_BASE64
@@ -103,8 +145,10 @@ RUN if [ -n "${APPS_JSON_BASE64}" ]; then \
 
 USER frappe
 
+
 ARG FRAPPE_BRANCH=version-15
 ARG FRAPPE_PATH=https://github.com/frappe/frappe
+
 RUN export APP_INSTALL_ARGS="" && \
   if [ -n "${APPS_JSON_BASE64}" ]; then \
     export APP_INSTALL_ARGS="--apps_path=/opt/frappe/apps.json"; \
@@ -114,6 +158,7 @@ RUN export APP_INSTALL_ARGS="" && \
     --frappe-path=${FRAPPE_PATH} \
     --no-procfile \
     --no-backups \
+    --skip-assets \
     --skip-redis-config-generation \
     --verbose \
     /home/frappe/frappe-bench && \
