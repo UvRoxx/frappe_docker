@@ -26,7 +26,7 @@ APPS_JSON='[
 # Encode the apps.json content to base64
 # shellcheck disable=SC2090
 APPS_JSON_BASE64=$(echo -n $APPS_JSON | base64)
-
+echo $APPS_JSON_BASE64
 # Build the docker image
 docker build \
   --no-cache \

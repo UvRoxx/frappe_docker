@@ -63,50 +63,24 @@ RUN useradd -ms /bin/bash frappe \
     && chown -R frappe:frappe /var/log/nginx \
     && chown -R frappe:frappe /var/lib/nginx \
     && chown -R frappe:frappe /run/nginx.pid
+
+COPY resources/nginx-template.conf /templates/nginx/frappe.conf.template
+COPY resources/nginx-entrypoint.sh /usr/local/bin/nginx-entrypoint.sh
 # Install gnupg required for adding the Yarn repository key
 RUN apt-get update \
     && apt-get install -y gnupg
-
 # Now add Yarn's repository and install Yarn
 RUN curl -sL https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - \
     && echo "deb https://dl.yarnpkg.com/debian/ stable main" > /etc/apt/sources.list.d/yarn.list \
     && apt-get update && apt-get install -y yarn
-
 # Install Supervisor
 RUN apt-get update \
     && apt-get install -y supervisor \
     && mkdir -p /var/log/supervisor \
     && chown -R frappe:frappe /var/log/supervisor \
     && chown -R frappe:frappe /etc/supervisor
-
-
-
 FROM base AS builder
-# Install YARN
-RUN . ${NVM_DIR}/nvm.sh \
-    && nvm use v${NODE_VERSION} \
-    && npm install -g yarn \
-    && nvm alias default v${NODE_VERSION} \
-    && rm -rf ${NVM_DIR}/.cache
-# Ensure yarn is in PATH
-ENV PATH ${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/:${PATH}
-# Set alias yarn for yarnpkg to avoid conflict with yarn package
-RUN echo 'alias yarn="yarnpkg"' >>/home/frappe/.bashrc
-# test yarn installation
-ENV PATH ${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/:${PATH}
 
-RUN echo 'export PATH=${NVM_DIR}/versions/node/v${NODE_VERSION}/bin/:${PATH}' >> /home/frappe/.bashrc
-
-# apps.json includes
-ARG APPS_JSON_BASE64
-RUN if [ -n "${APPS_JSON_BASE64}" ]; then \
-    mkdir /opt/frappe && echo "${APPS_JSON_BASE64}" | base64 -d > /opt/frappe/apps.json; \
-  fi
-
-
-
-# If test fails, echo error and exit
-RUN if [ $? -ne 0 ]; then echo "Yarn installation failed"; exit 1; fi
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
     # For frappe framework
@@ -144,9 +118,8 @@ RUN bench init \
   --no-backups \
   --skip-redis-config-generation \
   --verbose \
-  /home/frappe/frappe-bench
-
-RUN cd /home/frappe/frappe-bench && \
+  /home/frappe/frappe-bench && \
+  cd /home/frappe/frappe-bench && \
   bench get-app --branch=${ERPNEXT_BRANCH} --resolve-deps hrms ${ERPNEXT_REPO} && \
   echo "{}" > sites/common_site_config.json && \
   find apps -mindepth 1 -path "*/.git" | xargs rm -fr
